@@ -1,0 +1,105 @@
+#include <SoftwareSerial.h>
+
+// Define the pins for GSM module
+#define GSM_TX_PIN 2
+#define GSM_RX_PIN 3
+// Define the pins for GPS module
+#define GPS_TX_PIN 4
+#define GPS_RX_PIN 5
+
+SoftwareSerial gsmSerial(GSM_TX_PIN, GSM_RX_PIN); // RX, TX
+SoftwareSerial gpsSerial(GPS_TX_PIN, GPS_RX_PIN); // RX, TX
+
+String phoneNumber = "+1234567890"; // User's phone number
+
+void setup() {
+  Serial.begin(9600);
+  gsmSerial.begin(9600);
+  gpsSerial.begin(9600);
+}
+
+void loop() {
+  if (gsmSerial.available()) {
+    char c = gsmSerial.read();
+    Serial.write(c);
+  }
+  
+  if (gpsSerial.available()) {
+    char c = gpsSerial.read();
+    Serial.write(c);
+  }
+  
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == '1') {
+      sendLocation();
+    } else if (c == '2') {
+      sendLocationPeriodically();
+    }
+  }
+}
+
+void sendLocation() {
+  String latitude, longitude;
+  
+  // Read GPS data
+  if (getGPSData(latitude, longitude)) {
+    // Send GPS data via SMS
+    gsmSerial.println("AT+CMGF=1"); // Set SMS mode to text
+    delay(1000);
+    gsmSerial.print("AT+CMGS=\"");
+    gsmSerial.print(phoneNumber);
+    gsmSerial.println("\"");
+    delay(1000);
+    gsmSerial.print("Latitude: ");
+    gsmSerial.print(latitude);
+    gsmSerial.print(", Longitude: ");
+    gsmSerial.println(longitude);
+    delay(1000);
+    gsmSerial.write(0x1A);
+    delay(1000);
+  }
+}
+
+void sendLocationPeriodically() {
+  while (true) {
+    sendLocation();
+    delay(300000); // Send location every 5 minutes
+  }
+}
+
+bool getGPSData(String& latitude, String& longitude) {
+  // Request GPS data
+  gpsSerial.println("AT+CGNSINF");
+  delay(1000);
+  String response = "";
+  while (gpsSerial.available()) {
+    response += gpsSerial.readString();
+  }
+
+  // Parse GPS data
+  int index = response.indexOf(":");
+  if (index != -1) {
+    response = response.substring(index + 1);
+    String data[9];
+    int i = 0;
+    while (response.length() > 0) {
+      index = response.indexOf(",");
+      if (index != -1) {
+        data[i] = response.substring(0, index);
+        response = response.substring(index + 1);
+      } else {
+        data[i] = response;
+        response = "";
+      }
+      i++;
+    }
+
+    if (data[2] == "1") { // Check if GPS fix is valid
+      latitude = data[3];
+      longitude = data[4];
+      return true;
+    }
+  }
+  return false;
+}
